@@ -1,5 +1,7 @@
 # Email Enricher API
 
+> Repository: `alhamdulillah_sass_emil_enricher`
+
 Minimal Express service that generates candidate email addresses for a list of contacts, verifies them with MailTester Ninja, and returns the best match per contact.
 
 ## Features
