@@ -5,6 +5,14 @@ import { config } from '../config/env.js';
 // only once per process lifetime.  Subsequent calls return the cached key.
 let cachedKeyInfo = null;
 
+function extractKey(data) {
+  const rawKey = data?.key ?? data?.subscriptionId ?? data?.id;
+  if (!rawKey) {
+    return null;
+  }
+  return String(rawKey).replace(/[{}]/g, '').trim();
+}
+
 /**
  * Fetches a MailTester subscription key from the internal key provider.
  * Caches the key for subsequent calls.
@@ -17,8 +25,15 @@ export async function getMailtesterKey() {
   }
   try {
     const response = await axios.get(config.keyProviderUrl);
-    // The API returns an object with a `key` field (and maybe other fields).
-    cachedKeyInfo = response.data;
+    const normalizedKey = extractKey(response.data);
+    if (!normalizedKey) {
+      throw new Error('Key provider response missing subscription key');
+    }
+    // Preserve original fields but ensure callers can rely on `key`.
+    cachedKeyInfo = {
+      ...response.data,
+      key: normalizedKey,
+    };
     return cachedKeyInfo;
   } catch (error) {
     // Provide a clear error for upstream handlers.

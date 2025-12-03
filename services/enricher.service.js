@@ -23,7 +23,12 @@ export async function enrichContact(contact) {
   for (let i = 0; i < candidates.length; i++) {
     const email = candidates[i];
     const result = await verifyEmail(email);
-    allCheckedCandidates.push({ email, code: result.code, message: result.message });
+    allCheckedCandidates.push({
+      email,
+      code: result.code,
+      message: result.message,
+      error: result.error || null,
+    });
 
     // Rule A: stop on first valid
     if (result.code === 'ok') {
@@ -52,7 +57,11 @@ export async function enrichContact(contact) {
       // Rule C: none valid and not all catch-all
       bestEmail = null;
       status = 'not_found_valid_emails';
-      details = { reason: 'All candidates rejected or unverifiable' };
+      const firstError = allCheckedCandidates.find((candidate) => candidate.error)?.error;
+      details = {
+        reason: 'All candidates rejected or unverifiable',
+        ...(firstError ? { lastError: firstError } : {}),
+      };
     }
   }
 

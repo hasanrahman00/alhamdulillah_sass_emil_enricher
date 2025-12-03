@@ -98,3 +98,4 @@ server.js     # Express bootstrap + listener
 ## Notes
 - API key fetching is cached per process to avoid overloading the provider.
 - Rate limiting is coarse but ensures a minimum spacing between MailTester calls; adjust `MIN_DELAY_MS` to match your plan.
+- The key provider may return `subscriptionId` values wrapped in `{}`; the app now strips those braces automatically before calling MailTester.
