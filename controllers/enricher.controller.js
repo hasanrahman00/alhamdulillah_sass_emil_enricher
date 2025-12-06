@@ -31,18 +31,42 @@ export async function uploadContactsFile(req, res) {
   }
 
   const userId = req.headers['x-user-id'] || req.body?.userId || 'anonymous';
-  try {
-    const payload = await processUploadedFile({
-      jobId: req.jobContext.jobId,
-      jobDir: req.jobContext.jobDir,
-      file: req.file,
-      userId,
+  const jobId = req.jobContext.jobId;
+  const downloadUrl = `/v1/scraper/enricher/download/${jobId}`;
+  let responded = false;
+
+  processUploadedFile({
+    jobId,
+    jobDir: req.jobContext.jobDir,
+    file: req.file,
+    userId,
+    onReady: async ({ metadata }) => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      res.status(202).json({
+        jobId,
+        status: metadata.status || 'processing',
+        totals: metadata.totals || null,
+        progress: metadata.progress || null,
+        downloadUrl,
+      });
+    },
+  })
+    .then((payload) => {
+      if (!responded) {
+        responded = true;
+        res.json(payload);
+      }
+    })
+    .catch((error) => {
+      console.error('Upload processing error:', error);
+      if (!responded) {
+        responded = true;
+        res.status(400).json({ error: error.message });
+      }
     });
-    return res.json(payload);
-  } catch (error) {
-    console.error('Upload processing error:', error);
-    return res.status(400).json({ error: error.message });
-  }
 }
 
 export async function downloadJobResult(req, res) {

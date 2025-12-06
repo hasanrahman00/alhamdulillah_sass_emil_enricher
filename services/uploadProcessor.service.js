@@ -15,7 +15,7 @@ const COLUMN_ALIASES = {
   website: ['website', 'domain', 'company website', 'company domain'],
 };
 
-export async function processUploadedFile({ jobId, jobDir, file, userId }) {
+export async function processUploadedFile({ jobId, jobDir, file, userId, onReady }) {
   markJobActive(jobId);
   const baseMetadata = {
     jobId,
@@ -26,6 +26,19 @@ export async function processUploadedFile({ jobId, jobDir, file, userId }) {
   };
   let metadataSnapshot = { ...baseMetadata, status: 'processing' };
   await writeMetadata(jobDir, metadataSnapshot);
+
+  let readyCallbackTriggered = false;
+
+  const notifyReady = async () => {
+    if (readyCallbackTriggered || typeof onReady !== 'function') {
+      return;
+    }
+    readyCallbackTriggered = true;
+    await onReady({
+      jobId,
+      metadata: metadataSnapshot,
+    });
+  };
 
   try {
     validateExtension(file.originalname);
@@ -53,6 +66,7 @@ export async function processUploadedFile({ jobId, jobDir, file, userId }) {
       lastUpdate: new Date().toISOString(),
     };
     await writeMetadata(jobDir, metadataSnapshot);
+    await notifyReady();
 
     const updateProgress = async (status) => {
       progress.processedContacts += 1;
@@ -104,6 +118,7 @@ export async function processUploadedFile({ jobId, jobDir, file, userId }) {
     throw error;
   } finally {
     markJobComplete(jobId);
+    await notifyReady();
   }
 }
 

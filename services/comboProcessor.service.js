@@ -28,6 +28,14 @@ export async function processContactsInBatches(contacts, {
     resultsPerCombo: [],
   }));
 
+  states.forEach((state) => {
+    console.log('[ComboProcessor] Initialized contact', {
+      contact: state.contact,
+      patternCount: state.patterns.length,
+      patterns: state.patterns,
+    });
+  });
+
   const processLoop = async () => {
     while (true) {
       const pendingStates = states.filter((state) => !state.done && state.currentComboIndex < maxCombos && state.currentComboIndex < state.patterns.length);
@@ -73,9 +81,23 @@ async function advanceState(state, verifyEmail, maxCombos, notify) {
   const email = state.patterns[state.currentComboIndex];
   let result;
   try {
+    console.log('[ComboProcessor] Verifying candidate', {
+      contact: state.contact,
+      comboIndex: state.currentComboIndex,
+      email,
+    });
     result = await verifyEmail(email);
+    console.log('[ComboProcessor] Result received', {
+      email,
+      code: result?.code ?? null,
+      message: result?.message ?? null,
+    });
   } catch (error) {
     result = { code: null, message: null, error: error.message };
+    console.error('[ComboProcessor] Verification threw', {
+      email,
+      error: error.message,
+    });
   }
 
   state.resultsPerCombo.push({
@@ -124,6 +146,13 @@ async function finalizeState(state, notify) {
   }
 
   state.done = true;
+
+  console.log('[ComboProcessor] Finalized contact', {
+    contact: state.contact,
+    status: state.status,
+    bestEmail: state.bestEmail,
+    checkedCombos: state.resultsPerCombo,
+  });
 
   if (notify) {
     await notify(buildResultPayload(state));

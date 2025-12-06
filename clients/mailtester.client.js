@@ -24,8 +24,11 @@ export async function verifyEmail(email) {
 
     // Prepare the request URL with encoded query parameters.
     const url = `${config.mailTesterBaseUrl}?email=${encodeURIComponent(email)}&key=${encodeURIComponent(key)}`;
+    console.log('[MailTester] Requesting verification', { email, url });
     const response = await axios.get(url);
     const data = response.data || {};
+
+    console.log('[MailTester] Response received', { email, code: data.code, message: data.message });
 
     return {
       email,
@@ -34,6 +37,7 @@ export async function verifyEmail(email) {
       raw: data,
     };
   } catch (error) {
+    console.error('[MailTester] Verification failed', { email, error: error.message, response: error.response?.data });
     // Capture any error, including HTTP errors, and include in returned object.
     return {
       email,

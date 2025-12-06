@@ -52,6 +52,8 @@ if (resumeJobBtn) {
   resumeJobBtn.addEventListener('click', () => {
     const lastJobId = localStorage.getItem('lastJobId');
     if (lastJobId) {
+      userPinnedUpload = true;
+      bodyEl.classList.add('show-upload');
       startJobTracking(lastJobId);
     }
   });
@@ -72,7 +74,6 @@ async function handleUploadSubmit(event) {
     return;
   }
 
-  bodyEl.classList.add('show-upload');
   toggleLoading(true);
   showStatus('neutral', 'Uploading file and starting the job...');
   const userId = (userIdInput?.value || '').trim() || 'demo-user';
@@ -89,11 +90,18 @@ async function handleUploadSubmit(event) {
     if (!response.ok) {
       throw new Error(payload.error || 'Upload failed');
     }
-    renderResults(payload);
+    if (payload?.results?.length) {
+      renderResults(payload);
+    }
     startJobTracking(payload.jobId);
-    showStatus('success', `Job ${payload.jobId} completed successfully.`);
+    const completed = Boolean(payload?.results?.length) || payload.status === 'completed';
+    const message = completed
+      ? `Job ${payload.jobId} completed successfully.`
+      : `Job ${payload.jobId} started. Track progress from the dashboard.`;
+    showStatus('success', message);
     userPinnedUpload = false;
     await loadJobs({ silent: true });
+    bodyEl.classList.remove('show-upload');
   } catch (error) {
     console.error(error);
     showStatus('error', error.message);
@@ -161,7 +169,6 @@ function startJobTracking(jobId) {
     return;
   }
   activeJobId = jobId;
-  bodyEl.classList.add('show-upload');
   localStorage.setItem('lastJobId', jobId);
   if (progressSection) {
     progressSection.hidden = false;
@@ -303,7 +310,7 @@ function ensureDefaultView() {
   if (closeUploadBtn) {
     closeUploadBtn.hidden = false;
   }
-  if (!userPinnedUpload && !activeJobId) {
+  if (!userPinnedUpload) {
     bodyEl.classList.remove('show-upload');
   }
 }

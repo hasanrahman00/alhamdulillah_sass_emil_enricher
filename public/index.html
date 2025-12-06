@@ -22,32 +22,33 @@
         </button>
       </header>
 
-      <section class="panel" id="list-view">
-        <div class="list-toolbar">
-          <div class="search-field">
-            <span class="icon" aria-hidden="true">🔍</span>
-            <input type="search" id="job-search" placeholder="Search by file name..." aria-label="Search jobs" />
+      <div class="panel-stack">
+        <section class="panel view-panel" id="list-view">
+          <div class="list-toolbar">
+            <div class="search-field">
+              <span class="icon" aria-hidden="true">🔍</span>
+              <input type="search" id="job-search" placeholder="Search by file name..." aria-label="Search jobs" />
+            </div>
+            <button type="button" id="refresh-jobs" class="ghost-btn">Refresh</button>
           </div>
-          <button type="button" id="refresh-jobs" class="ghost-btn">Refresh</button>
-        </div>
-        <div class="table-wrapper">
-          <table id="jobs-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Status</th>
-                <th>Total Data</th>
-                <th>Enriched Emails</th>
-                <th>Download</th>
-              </tr>
-            </thead>
-            <tbody id="jobs-tbody"></tbody>
-          </table>
-        </div>
-        <p id="empty-state" class="empty-state">No uploads yet. Click “New List” to process your first file.</p>
-      </section>
+          <div class="table-wrapper">
+            <table id="jobs-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th>Total Data</th>
+                  <th>Enriched Emails</th>
+                  <th>Download</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-tbody"></tbody>
+            </table>
+          </div>
+          <p id="empty-state" class="empty-state">No uploads yet. Click “New List” to process your first file.</p>
+        </section>
 
-      <section id="upload-panel" class="panel upload-panel">
+        <section id="upload-panel" class="panel upload-panel view-panel">
         <div class="panel-header upload-header">
           <div>
             <h2>Upload Dashboard</h2>
@@ -111,6 +112,7 @@
           </div>
         </div>
       </section>
+      </div>
     </main>
     <script type="module" src="./app.js"></script>
   </body>
