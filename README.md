@@ -58,7 +58,7 @@ Key rules enforced by the upload pipeline:
 - First/last names and website domains are cleaned automatically before processing. Invalid rows trigger a descriptive error.
 - Rows with no website/domain or with neither first nor last name are skipped automatically (status `skipped_missing_fields`). Rows that contain at least one of the name fields still run through enrichment using single-name combo patterns.
 - Temporary job directories live under `tempUploads/` with metadata (jobId, userId, timestamps). A background scheduler purges artifacts older than 24 hours unless the job is currently running.
-- Once processing completes a new CSV is emitted inside the job directory and can be downloaded via the API or directly from the new web UI.
+- The output CSV is created immediately and appended in real time as each row finishes, so users can download partial results while the job is still running.
 
 ### Frontend testing surface
 

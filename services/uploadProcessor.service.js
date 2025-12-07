@@ -54,6 +54,11 @@ export async function processUploadedFile({ jobId, jobDir, file, userId, onReady
 
     const runnableRows = normalizedRows.filter((row) => row.contact);
     const progress = createProgressSnapshot(runnableRows.length, normalizedRows.length - runnableRows.length);
+    const csvColumns = buildCsvColumnOrder(normalizedRows);
+    const outputFilename = `output-${jobId}-${Date.now()}.csv`;
+    const outputPath = buildJobFilePath(jobDir, outputFilename);
+    const downloadUrl = `/v1/scraper/enricher/download/${jobId}`;
+    await initializeCsvFile(outputPath, csvColumns);
 
     metadataSnapshot = {
       ...metadataSnapshot,
@@ -63,10 +68,26 @@ export async function processUploadedFile({ jobId, jobDir, file, userId, onReady
         skippedRows: normalizedRows.length - runnableRows.length,
       },
       progress,
+      outputFilename,
+      downloadUrl,
       lastUpdate: new Date().toISOString(),
     };
     await writeMetadata(jobDir, metadataSnapshot);
     await notifyReady();
+
+    const appendRowInOrder = createCsvRowAppender(outputPath, csvColumns);
+    const rowLookup = new Map(normalizedRows.map((row) => [row.rowId, row]));
+    for (const row of normalizedRows) {
+      if (row.contact) {
+        continue;
+      }
+      const skipRow = composeCsvRowData(row.sanitizedRow, {
+        bestEmail: '',
+        status: 'skipped_missing_fields',
+        messageSummary: row.skipReason,
+      });
+      await appendRowInOrder(row.rowId, skipRow);
+    }
 
     const updateProgress = async (status) => {
       progress.processedContacts += 1;
@@ -80,23 +101,41 @@ export async function processUploadedFile({ jobId, jobDir, file, userId, onReady
       await writeMetadata(jobDir, metadataSnapshot);
     };
 
-    const contacts = runnableRows.map((row) => row.contact);
+    const contacts = runnableRows.map((row) => ({ ...row.contact, rowId: row.rowId }));
+
+    const appendContactResult = async (resultPayload) => {
+      const rowId = resultPayload?.contact?.rowId;
+      if (typeof rowId !== 'number') {
+        return;
+      }
+      const rowInfo = rowLookup.get(rowId);
+      if (!rowInfo) {
+        return;
+      }
+      const csvRow = composeCsvRowData(rowInfo.sanitizedRow, {
+        bestEmail: resultPayload.bestEmail || '',
+        status: resultPayload.status || '',
+        messageSummary: deriveMessageSummary(resultPayload),
+      });
+      await appendRowInOrder(rowId, csvRow);
+    };
+
     const enrichmentResults = contacts.length
-      ? await enrichContacts(contacts, { onResult: async (result) => updateProgress(result.status) })
+      ? await enrichContacts(contacts, {
+          onResult: async (result) => {
+            await appendContactResult(result);
+            await updateProgress(result.status);
+          },
+        })
       : [];
 
-    const { apiResults, csvRows } = buildResultSets(normalizedRows, enrichmentResults);
-
-    const outputFilename = `output-${jobId}-${Date.now()}.csv`;
-    const outputPath = await writeCsv(jobDir, outputFilename, csvRows);
+    const { apiResults } = buildResultSets(normalizedRows, enrichmentResults);
 
     const completionMetadata = {
       ...metadataSnapshot,
       status: 'completed',
       completedAt: new Date().toISOString(),
       resultCount: apiResults.length,
-      outputFilename,
-      downloadUrl: `/v1/scraper/enricher/download/${jobId}`,
     };
     await writeMetadata(jobDir, completionMetadata);
 
@@ -105,7 +144,7 @@ export async function processUploadedFile({ jobId, jobDir, file, userId, onReady
       userId,
       outputFile: outputFilename,
       outputPath,
-      downloadUrl: `/v1/scraper/enricher/download/${jobId}`,
+      downloadUrl,
       results: apiResults,
     };
   } catch (error) {
@@ -180,6 +219,7 @@ function normalizeRows(rows, initialColumnMap, headerRowIndex, initialHeaders) {
   const normalized = [];
   let currentHeaders = [...initialHeaders];
   let currentColumnMap = { ...initialColumnMap };
+  let rowCounter = 0;
 
   rows.forEach((rowValues, index) => {
     const rowNumber = headerRowIndex + 2 + index;
@@ -197,7 +237,11 @@ function normalizeRows(rows, initialColumnMap, headerRowIndex, initialHeaders) {
       return;
     }
 
+    const rowId = rowCounter;
+    rowCounter += 1;
+
     normalized.push({
+      rowId,
       rowNumber,
       sanitizedRow: sanitized.sanitizedRow,
       contact: sanitized.contact,
@@ -258,7 +302,6 @@ function findColumnKey(normalizedHeaderMap, candidates) {
 
 function buildResultSets(normalizedRows, enrichmentResults) {
   const apiResults = [];
-  const csvRows = [];
   let enrichmentIndex = 0;
 
   normalizedRows.forEach((row) => {
@@ -273,27 +316,15 @@ function buildResultSets(normalizedRows, enrichmentResults) {
         allCheckedCandidates: [],
       };
       apiResults.push(skipResult);
-      csvRows.push({
-        ...row.sanitizedRow,
-        bestEmail: '',
-        status: skipResult.status,
-        messageSummary: row.skipReason,
-      });
       return;
     }
 
     const result = enrichmentResults[enrichmentIndex] || defaultResult(row.profile);
     enrichmentIndex += 1;
     apiResults.push(result);
-    csvRows.push({
-      ...row.sanitizedRow,
-      bestEmail: result.bestEmail || '',
-      status: result.status || '',
-      messageSummary: deriveMessageSummary(result),
-    });
   });
 
-  return { apiResults, csvRows };
+  return { apiResults };
 }
 
 function defaultResult(profile) {
@@ -306,14 +337,6 @@ function defaultResult(profile) {
     details: { reason: 'Unexpected processing mismatch' },
     allCheckedCandidates: [],
   };
-}
-
-async function writeCsv(jobDir, filename, rows) {
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  const csv = XLSX.utils.sheet_to_csv(worksheet);
-  const outputPath = buildJobFilePath(jobDir, filename);
-  await fs.writeFile(outputPath, csv, 'utf-8');
-  return outputPath;
 }
 
 function deriveMessageSummary(result) {
@@ -389,4 +412,66 @@ function normalizeStatusBucket(status) {
   }
   const allowed = new Set(['valid', 'catchall_default', 'not_found_valid_emails', 'error']);
   return allowed.has(status) ? status : 'other';
+}
+
+function buildCsvColumnOrder(normalizedRows) {
+  const columns = [];
+  normalizedRows.forEach((row) => {
+    Object.keys(row.sanitizedRow || {}).forEach((key) => {
+      if (!columns.includes(key)) {
+        columns.push(key);
+      }
+    });
+  });
+  ['bestEmail', 'status', 'messageSummary'].forEach((extra) => {
+    if (!columns.includes(extra)) {
+      columns.push(extra);
+    }
+  });
+  return columns;
+}
+
+async function initializeCsvFile(filePath, columns) {
+  const headerLine = `${columns.map((column) => escapeCsvValue(column)).join(',')}\n`;
+  await fs.writeFile(filePath, headerLine, 'utf-8');
+}
+
+async function appendCsvRow(filePath, columns, record) {
+  const line = `${columns.map((column) => escapeCsvValue(record?.[column] ?? '')).join(',')}\n`;
+  await fs.appendFile(filePath, line, 'utf-8');
+}
+
+function escapeCsvValue(value) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  const stringValue = String(value);
+  if (/[",\n\r]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+}
+
+function createCsvRowAppender(filePath, columns) {
+  let nextRowId = 0;
+  const pending = new Map();
+
+  return async (rowId, record) => {
+    pending.set(rowId, record);
+    while (pending.has(nextRowId)) {
+      const row = pending.get(nextRowId);
+      pending.delete(nextRowId);
+      await appendCsvRow(filePath, columns, row);
+      nextRowId += 1;
+    }
+  };
+}
+
+function composeCsvRowData(baseRow, overrides = {}) {
+  return {
+    ...baseRow,
+    bestEmail: overrides.bestEmail || '',
+    status: overrides.status || '',
+    messageSummary: overrides.messageSummary || '',
+  };
 }
