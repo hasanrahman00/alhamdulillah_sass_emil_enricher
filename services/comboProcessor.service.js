@@ -107,6 +107,22 @@ async function advanceState(state, verifyEmail, maxCombos, notify) {
     error: result?.error ?? null,
   });
 
+  if (state.currentComboIndex === 0 && isMissingMxRecords(result)) {
+    console.log('[ComboProcessor] Terminating contact due to missing MX records', {
+      contact: state.contact,
+      email,
+      message: result?.message ?? result?.raw?.message ?? null,
+    });
+    state.bestEmail = null;
+    state.status = 'not_found_valid_emails';
+    state.details = { reason: 'Domain missing MX records' };
+    state.done = true;
+    if (notify) {
+      await notify(buildResultPayload(state));
+    }
+    return;
+  }
+
   if (result?.code === 'ok') {
     state.bestEmail = email;
     state.status = 'valid';
@@ -167,4 +183,28 @@ function buildResultPayload(state) {
     details: state.details,
     resultsPerCombo: state.resultsPerCombo,
   };
+}
+
+function isMissingMxRecords(result) {
+  const candidates = [
+    result?.code,
+    result?.message,
+    result?.raw?.code,
+    result?.raw?.message,
+    result?.raw?.reason,
+    result?.error,
+  ];
+
+  return candidates.some((value) => containsNoMxSignal(value));
+}
+
+function containsNoMxSignal(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.toLowerCase();
+  if (!normalized.includes('mx')) {
+    return false;
+  }
+  return normalized.includes('no ') || normalized.includes('not ') || normalized.includes('missing') || normalized.includes('without');
 }
