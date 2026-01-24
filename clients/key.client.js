@@ -18,13 +18,25 @@ function extractWaitDuration(payload) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : WAIT_FALLBACK_MS;
 }
 
-function extractKey(data) {
-  const candidate = Array.isArray(data?.keys) && data.keys.length > 0 ? data.keys[0] : data;
-  const rawKey = candidate?.key ?? candidate?.subscriptionId ?? candidate?.id;
-  if (!rawKey) {
+function normalizeKeyValue(value) {
+  if (value == null) {
     return null;
   }
-  return String(rawKey).replace(/[{}]/g, '').trim();
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).replace(/[{}]/g, '').trim();
+  }
+  if (typeof value === 'object') {
+    return normalizeKeyValue(value.key ?? value.subscriptionId ?? value.id);
+  }
+  return null;
+}
+
+function extractKeyInfo(data) {
+  const entry = Array.isArray(data?.keys) && data.keys.length > 0 ? data.keys[0] : data?.key ?? data;
+  const rawKey = entry?.key ?? entry?.subscriptionId ?? entry?.id ?? entry;
+  const normalizedKey = normalizeKeyValue(rawKey);
+  const details = entry && typeof entry === 'object' ? entry : null;
+  return { normalizedKey, details };
 }
 
 /**
@@ -38,7 +50,7 @@ export async function getMailtesterKey() {
     try {
       const response = await axios.get(config.keyProviderUrl);
       const payload = response.data || {};
-      const normalizedKey = extractKey(payload);
+      const { normalizedKey, details } = extractKeyInfo(payload);
       const status = typeof payload.status === 'string' ? payload.status.toLowerCase() : null;
 
       if (status === 'wait') {
@@ -54,6 +66,7 @@ export async function getMailtesterKey() {
 
       return {
         ...payload,
+        ...(details || {}),
         key: normalizedKey,
       };
     } catch (error) {
