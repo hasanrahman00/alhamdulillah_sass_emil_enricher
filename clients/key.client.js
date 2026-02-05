@@ -53,7 +53,7 @@ export async function getMailtesterKey() {
       const { normalizedKey, details } = extractKeyInfo(payload);
       const status = typeof payload.status === 'string' ? payload.status.toLowerCase() : null;
 
-      if (status === 'wait') {
+      if (status === 'wait' && !normalizedKey) {
         const waitMs = extractWaitDuration(payload);
         console.log('[KeyClient] Rotation service asked us to wait', { waitMs });
         await sleep(waitMs);
@@ -64,9 +64,14 @@ export async function getMailtesterKey() {
         throw new Error('Key provider response missing subscription key');
       }
 
+      const avgRequestIntervalMs = details?.avgRequestIntervalMs ?? payload.avgRequestIntervalMs;
+      const nextRequestAllowedAt = details?.nextRequestAllowedAt ?? payload.nextRequestAllowedAt;
+
       return {
         ...payload,
         ...(details || {}),
+        avgRequestIntervalMs,
+        nextRequestAllowedAt,
         key: normalizedKey,
       };
     } catch (error) {
